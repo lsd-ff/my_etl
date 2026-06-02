@@ -6,9 +6,10 @@ export default function ChunkTable({ data, total, loading, page, pageSize, onCha
       rowKey="chunk_id"
       dataSource={data}
       loading={loading}
+      scroll={{ x: 'max-content' }}
       pagination={{ current: page, pageSize, total, showSizeChanger: true }}
       onChange={(pagination) => onChange(pagination.current || 1, pagination.pageSize || pageSize)}
-      expandable={{ expandedRowRender: (record) => <Typography.Paragraph className="pre-wrap">{record.content}</Typography.Paragraph> }}
+      expandable={{ expandedRowRender: (record: any) => <Typography.Paragraph className="pre-wrap">{record.content}</Typography.Paragraph> }}
       columns={[
         { title: 'chunk_id', dataIndex: 'chunk_id', width: 220 },
         { title: 'index', dataIndex: 'chunk_index', width: 90 },
@@ -20,4 +21,3 @@ export default function ChunkTable({ data, total, loading, page, pageSize, onCha
     />
   );
 }
-

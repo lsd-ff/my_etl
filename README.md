@@ -29,7 +29,7 @@ upload raw file
   -> batch upsert Chroma
 ```
 
-默认使用 `MockLLM` 和 `MockEmbedding`，不配置 API key 也能本地跑通。
+默认配置使用真实 OpenAI-compatible 服务生成 QA 和 embedding；测试环境仍可通过 mock provider 离线验证基础流程。
 
 ## 目录结构
 
@@ -99,6 +99,31 @@ embedding 输入固定为：
 {keywords}
 ```
 
+落盘的 QA JSONL 单条记录只保留：
+
+```json
+{
+  "id": "doc001_chunk3_qa1",
+  "document": "什么是向量数据库？",
+  "embedding_text": "问题：\n...\n\n详细上下文：\n...\n\n关键词：\n...",
+  "metadata": {
+    "answer": "...",
+    "context": "...",
+    "keywords": "向量数据库,RAG,Embedding",
+    "source": "xxx.pdf",
+    "file_type": "pdf",
+    "page": 12,
+    "section": "第三章",
+    "chunk_id": "doc001_chunk3",
+    "doc_id": "doc001",
+    "chunk_index": 3,
+    "qa_index": 1,
+    "file_hash": "...",
+    "chunk_hash": "..."
+  }
+}
+```
+
 ## 后端安装与启动
 
 先复制配置文件：
@@ -108,7 +133,7 @@ cd C:\Users\w\Desktop\my_etl\backend
 copy .env.example .env
 ```
 
-后端的大模型配置、embedding 配置、Chroma 配置都放在 `backend\.env` 中。默认是 mock provider，不需要 API key。
+后端的大模型配置、embedding 配置、Chroma 配置都放在 `backend\.env` 中。真实 provider 需要填写对应 API key。
 
 ```powershell
 cd C:\Users\w\Desktop\my_etl\backend
@@ -156,6 +181,8 @@ GET  /api/files/{doc_id}/chunks?page=1&page_size=20
 POST /api/files/{doc_id}/generate-qa
 GET  /api/files/{doc_id}/qa-records?page=1&page_size=20&q=
 POST /api/files/{doc_id}/import-chroma
+POST /api/files/{doc_id}/compact-qa-records
+GET  /api/files/-/chroma-info
 GET  /api/files/{doc_id}/state
 GET  /api/files/{doc_id}/failed-chunks
 POST /api/files/{doc_id}/retry-failed
@@ -163,8 +190,6 @@ GET  /api/files/{doc_id}/logs
 POST /api/batch/process
 POST /api/search
 ```
-
-旧接口 `/ingest` 和 `/search` 仍保留兼容。
 
 ## 配置项
 
@@ -177,21 +202,25 @@ CHROMA_PATH=./data/chroma
 CHROMA_COLLECTION=qa_records
 CHROMA_HOST=127.0.0.1
 CHROMA_PORT=8001
-PROCESSING_PATH=./processing_state
 CHUNK_SIZE=1000
 CHUNK_OVERLAP=150
 MOCK_EMBEDDING_DIM=384
 ID_PAD_WIDTH=0
-LLM_PROVIDER=mock
-LLM_MODEL=mock
+LLM_PROVIDER=autodl
+LLM_MODEL=qwen3.6-plus
 LLM_API_KEY=
-LLM_BASE_URL=
-LLM_MAX_RPM=60
-EMBEDDING_PROVIDER=mock
-EMBEDDING_MODEL=mock
+LLM_BASE_URL=https://www.autodl.art/api/v1
+LLM_MAX_RPM=100
+API_TIMEOUT_SECONDS=120
+API_MAX_RETRIES=3
+API_RETRY_BASE_SECONDS=1.0
+EMBEDDING_PROVIDER=dashscope
+EMBEDDING_MODEL=text-embedding-v4
 EMBEDDING_API_KEY=
-EMBEDDING_BASE_URL=
+EMBEDDING_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 ```
+
+真实模型调用会对超时、429 和 5xx 错误自动重试；QA 生成会过滤同文档重复问题，失败 chunk 会记录错误类型、错误信息和失败时间，后续“重试失败”只重新处理 failed JSONL 中的 chunk。
 
 ## 测试
 
@@ -208,8 +237,8 @@ cd C:\Users\w\Desktop\my_etl\frontend
 npm run build
 ```
 
-## 替换真实模型
+## 模型接入
 
 Embedding 入口在 `backend/app/embeddings/embedding_service.py`，只需要保证 `embed(text) -> list[float]`，且输入仍然使用完整的 `问题/详细上下文/关键词` 拼接文本。
 
-LLM 入口在 `backend/app/generators/context_generator.py` 和 `backend/app/generators/qa_generator.py`。真实 provider 可以接 OpenAI、DeepSeek 或 Ollama，但返回必须通过 QA JSON 校验：`question`、`answer`、`context`、`keywords` 都必须是非空字符串。
+LLM 入口在 `backend/app/generators/context_generator.py` 和 `backend/app/generators/qa_generator.py`。当前通过 OpenAI-compatible 调用真实 provider，返回必须通过 QA JSON 校验：`question`、`answer`、`context`、`keywords` 都必须是非空字符串。

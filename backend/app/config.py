@@ -37,7 +37,6 @@ class Config:
     chroma_mode: str = os.getenv("CHROMA_MODE", "persistent")
     chroma_host: str = os.getenv("CHROMA_HOST", "127.0.0.1")
     chroma_port: int = int(os.getenv("CHROMA_PORT", "8001"))
-    processing_path: str = os.getenv("PROCESSING_PATH", "./processing_state")
     chunk_size: int = int(os.getenv("CHUNK_SIZE", "1000"))
     chunk_overlap: int = int(os.getenv("CHUNK_OVERLAP", "150"))
     embedding_dim: int = int(os.getenv("MOCK_EMBEDDING_DIM", "384"))
@@ -51,6 +50,9 @@ class Config:
     embedding_api_key: str = os.getenv("EMBEDDING_API_KEY", "")
     embedding_base_url: str = os.getenv("EMBEDDING_BASE_URL", "")
     embedding_model: str = os.getenv("EMBEDDING_MODEL", "mock")
+    api_timeout_seconds: int = int(os.getenv("API_TIMEOUT_SECONDS", "120"))
+    api_max_retries: int = int(os.getenv("API_MAX_RETRIES", "3"))
+    api_retry_base_seconds: float = float(os.getenv("API_RETRY_BASE_SECONDS", "1.0"))
 
     @property
     def raw_dir(self) -> Path:

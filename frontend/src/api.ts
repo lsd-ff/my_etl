@@ -55,6 +55,12 @@ export const api = {
   importChroma(docId: string) {
     return request<Record<string, any>>(`${API_BASE}/files/${docId}/import-chroma`, { method: 'POST' });
   },
+  compactQARecords(docId: string) {
+    return request<Record<string, any>>(`${API_BASE}/files/${docId}/compact-qa-records`, { method: 'POST' });
+  },
+  chromaInfo() {
+    return request<Record<string, any>>(`${API_BASE}/files/-/chroma-info`);
+  },
   retryFailed(docId: string) {
     return request<Record<string, any>>(`${API_BASE}/files/${docId}/retry-failed`, { method: 'POST' });
   },

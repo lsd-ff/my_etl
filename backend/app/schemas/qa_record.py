@@ -115,20 +115,6 @@ class QARecord:
             "document": self.document,
             "embedding_text": self.embedding_text,
             "metadata": self.metadata,
-            "doc_id": self.doc_id,
-            "chunk_id": self.chunk_id,
-            "chunk_index": self.chunk_index,
-            "qa_index": self.qa_index,
-            "question": self.question,
-            "answer": self.answer,
-            "context": self.context,
-            "keywords": self.keywords,
-            "source": self.source,
-            "file_type": self.file_type,
-            "page": self.page,
-            "section": self.section,
-            "file_hash": self.file_hash,
-            "chunk_hash": self.chunk_hash,
         }
 
     @classmethod
@@ -167,4 +153,3 @@ class IngestResult:
             "qa_records": self.qa_records,
             "status": self.status,
         }
-

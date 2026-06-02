@@ -6,51 +6,309 @@ body,
 }
 
 body {
-  background: #f6f8fb;
+  background: #f6f7f9;
+  color: #172033;
+}
+
+body,
+button,
+input,
+textarea {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 .app-shell {
   min-height: 100%;
+  background: #f6f7f9;
 }
 
 .app-sider {
-  border-right: 1px solid #e6e8ee;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  background: #ffffff !important;
+  border-right: 1px solid #d9dee8;
+  box-shadow: 1px 0 0 rgba(16, 24, 40, 0.02);
+}
+
+.app-main {
+  min-width: 0;
 }
 
 .brand {
-  margin: 20px 20px 12px;
-}
-
-.app-header {
-  height: 56px;
-  padding: 0 24px;
-  background: #fff;
-  border-bottom: 1px solid #e6e8ee;
   display: flex;
   align-items: center;
   gap: 10px;
-  font-weight: 600;
+  padding: 18px 18px 14px;
+  border-bottom: 1px solid #edf0f5;
+}
+
+.brand-mark {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 8px;
+  background: #172033;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.brand-title.ant-typography {
+  margin: 0;
+  color: #172033;
+  font-size: 15px;
+  line-height: 20px;
+}
+
+.brand-subtitle {
+  color: #667085;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.app-sider .ant-menu {
+  padding: 12px;
+  border-inline-end: 0 !important;
+}
+
+.app-sider .ant-menu-item {
+  height: 38px;
+  margin: 3px 0;
+  color: #475467;
+  font-weight: 500;
+}
+
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  height: 56px;
+  padding: 0 24px;
+  background: rgba(255, 255, 255, 0.92);
+  border-bottom: 1px solid #d9dee8;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  backdrop-filter: blur(10px);
+}
+
+.header-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #172033;
+  font-size: 15px;
+  font-weight: 650;
+  min-width: 0;
+  white-space: nowrap;
 }
 
 .app-content {
-  padding: 24px;
+  width: 100%;
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 22px 24px 32px;
 }
 
 .page {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
+}
+
+.page-narrow {
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+.page > .ant-typography,
+.toolbar .ant-typography {
+  margin: 0;
+}
+
+.page > .ant-typography h3,
+.toolbar h3.ant-typography,
+.ant-typography h3 {
+  color: #172033;
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: 0;
 }
 
 .toolbar {
   display: flex;
+  min-height: 44px;
   gap: 8px;
   flex-wrap: wrap;
   align-items: center;
+  padding-bottom: 2px;
+}
+
+.toolbar .ant-input,
+.toolbar .ant-input-affix-wrapper,
+.toolbar .ant-input-number {
+  background: #ffffff;
+}
+
+.ant-btn {
+  font-weight: 550;
+  box-shadow: none;
+}
+
+.ant-btn-primary {
+  box-shadow: none;
+}
+
+.ant-table-wrapper,
+.ant-descriptions,
+.ant-card,
+.ant-alert,
+.ant-upload-wrapper .ant-upload-drag {
+  border-radius: 8px;
+}
+
+.ant-table-wrapper {
+  overflow: hidden;
+  background: #ffffff;
+  border: 1px solid #d9dee8;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+}
+
+.ant-table {
+  color: #172033;
+}
+
+.ant-table-thead > tr > th {
+  border-bottom: 1px solid #d9dee8 !important;
+  font-size: 12px;
+  font-weight: 650 !important;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.ant-table-tbody > tr > td {
+  border-bottom: 1px solid #edf0f5;
+}
+
+.ant-table-cell a,
+.ant-typography a {
+  color: #1d4ed8;
+  font-weight: 550;
+}
+
+.ant-pagination {
+  justify-content: center;
+  margin: 12px 16px !important;
+}
+
+.page-narrow .ant-table-tbody > tr > td {
+  height: 54px;
+}
+
+.page-narrow .ant-table-placeholder .ant-table-cell {
+  height: 96px;
+}
+
+.ant-descriptions {
+  overflow: hidden;
+  background: #ffffff;
+  border: 1px solid #d9dee8;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+}
+
+.ant-descriptions-bordered .ant-descriptions-item-label {
+  width: 150px;
+  background: #f8fafc;
+  color: #475467;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.ant-descriptions-bordered .ant-descriptions-item-content {
+  color: #172033;
+}
+
+.ant-statistic {
+  min-width: 120px;
+  padding: 12px 14px;
+  background: #ffffff;
+  border: 1px solid #d9dee8;
+  border-radius: 8px;
+}
+
+.ant-statistic-title {
+  margin-bottom: 4px;
+  color: #667085;
+  font-size: 12px;
+}
+
+.ant-statistic-content {
+  color: #172033;
+  font-size: 22px;
+  font-weight: 650;
+}
+
+.ant-card {
+  border-color: #d9dee8;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+}
+
+.ant-card-head {
+  min-height: 44px;
+  border-bottom-color: #edf0f5;
+}
+
+.ant-card-head-title {
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.ant-upload-wrapper .ant-upload-drag {
+  background: #ffffff;
+  border-color: #cbd5e1;
+}
+
+.ant-upload-wrapper .ant-upload-drag:not(.ant-upload-disabled):hover {
+  border-color: #2563eb;
+  background: #f7faff;
+}
+
+.ant-upload-wrapper .ant-upload-drag .ant-upload-drag-icon {
+  margin-bottom: 10px;
+}
+
+.ant-upload-wrapper .ant-upload-drag .ant-upload-drag-icon .anticon {
+  color: #2563eb;
+  font-size: 34px;
+}
+
+.ant-upload-wrapper .ant-upload-drag .ant-upload-text {
+  color: #172033;
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.ant-upload-wrapper .ant-upload-drag .ant-upload-hint {
+  color: #667085;
+  font-size: 13px;
+}
+
+.ant-tag {
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.ant-progress-line {
+  min-width: 120px;
 }
 
 .mono {
-  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 12px;
 }
 
 .pre-wrap {
@@ -58,3 +316,42 @@ body {
   word-break: break-word;
 }
 
+pre.pre-wrap {
+  max-height: 360px;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  background: #101828;
+  border-radius: 6px;
+  color: #d1fadf;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+@media (max-width: 520px) {
+  .app-shell.ant-layout-has-sider {
+    flex-direction: column;
+  }
+
+  .app-sider {
+    position: static;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    flex: none !important;
+    height: auto;
+  }
+
+  .app-shell {
+    flex-direction: column;
+  }
+
+  .app-content {
+    padding: 16px;
+  }
+
+  .app-header {
+    padding: 0 16px;
+  }
+
+}

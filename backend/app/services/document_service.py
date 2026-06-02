@@ -67,6 +67,13 @@ class DocumentService:
             "created_at": previous.get("created_at") or now,
             "updated_at": now,
             "current_step": "upload",
+            "current_chunk_id": "",
+            "current_chunk_index": 0,
+            "total_work_chunks": 0,
+            "current_qa_id": "",
+            "embedded_records": 0,
+            "total_embedding_records": 0,
+            "progress_message": "",
             "error": "",
             "processed_chunk_hashes": [],
             "processed_chunk_ids": [],
@@ -145,6 +152,8 @@ class DocumentService:
                     "imported_to_chroma": bool(state.get("imported_to_chroma")),
                     "created_at": state.get("created_at", ""),
                     "updated_at": state.get("updated_at", ""),
+                    "progress_message": state.get("progress_message", ""),
+                    "current_step": state.get("current_step", ""),
                 }
             )
         return sorted(documents, key=lambda item: item.get("created_at", ""), reverse=True)
@@ -238,3 +247,46 @@ class DocumentService:
             "chroma_error": chroma_error,
             "status": "deleted",
         }
+
+    def compact_qa_records(self, doc_id: str) -> dict[str, Any]:
+        state = self.load_state(doc_id)
+        path = self.qa_records_path(doc_id)
+        rows = self.read_jsonl(path)
+        compacted: list[dict[str, Any]] = []
+        seen_questions: set[str] = set()
+        for row in rows:
+            metadata = row.get("metadata") or {}
+            document = str(row.get("document") or row.get("question") or "").strip()
+            if not document:
+                continue
+            key = re.sub(r"[\W_]+", "", document.lower())
+            if key in seen_questions:
+                continue
+            seen_questions.add(key)
+            embedding_text = str(row.get("embedding_text") or "").strip() or self.embedding_text(
+                document,
+                str(metadata.get("context") or row.get("context") or ""),
+                str(metadata.get("keywords") or row.get("keywords") or ""),
+            )
+            compacted.append(
+                {
+                    "id": row.get("id", ""),
+                    "document": document,
+                    "embedding_text": embedding_text,
+                    "metadata": metadata,
+                }
+            )
+        self.write_jsonl(path, compacted)
+        self.update_state(
+            doc_id,
+            qa_records=len(compacted),
+            imported_to_chroma=False,
+            current_step="compact_qa_records",
+            progress_message=f"Compacted {len(compacted)} QA records",
+        )
+        self.append_log(doc_id, f"Compacted QA JSONL for {state.get('filename', doc_id)}: {len(compacted)} records")
+        return {"doc_id": doc_id, "records": len(compacted), "status": "compacted"}
+
+    @staticmethod
+    def embedding_text(question: str, context: str, keywords: str) -> str:
+        return f"问题：\n{question}\n\n详细上下文：\n{context}\n\n关键词：\n{keywords}"

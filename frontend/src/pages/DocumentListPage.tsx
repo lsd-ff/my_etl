@@ -46,7 +46,7 @@ export default function DocumentListPage() {
     <div className="page">
       <div className="toolbar">
         <Typography.Title level={3} style={{ marginRight: 'auto' }}>文件列表</Typography.Title>
-        <Button onClick={load}>刷新</Button>
+        <Button onClick={() => load()}>刷新</Button>
         <Button
           disabled={!selected.length}
           onClick={() => run('批量处理', () => api.batch(selected as string[], ['chunk', 'generate_qa', 'import_chroma']))}
@@ -58,6 +58,7 @@ export default function DocumentListPage() {
         rowKey="doc_id"
         dataSource={data}
         loading={loading}
+        scroll={{ x: 'max-content' }}
         rowSelection={{ selectedRowKeys: selected, onChange: setSelected }}
         columns={[
           { title: '文件名', dataIndex: 'filename', render: (text, row) => <Link to={`/documents/${row.doc_id}`}>{text}</Link> },
@@ -70,24 +71,27 @@ export default function DocumentListPage() {
           {
             title: '操作',
             width: 500,
-            render: (_, row) => (
-              <Space wrap>
-                <Button size="small" onClick={() => run('分块', () => api.chunk(row.doc_id))}>分块</Button>
-                <Button size="small" onClick={() => run('生成 QA', () => api.generateQA(row.doc_id))}>生成 QA</Button>
-                <Button size="small" onClick={() => run('导入 Chroma', () => api.importChroma(row.doc_id))}>导入 Chroma</Button>
-                <Button size="small" onClick={() => run('重试失败', () => api.retryFailed(row.doc_id))}>重试失败</Button>
-                <Link to={`/documents/${row.doc_id}`}>详情</Link>
-                <Popconfirm
-                  title="确认删除该文件？"
-                  description="会删除原文件、中间结果、状态日志，并尝试删除 Chroma 中的记录。"
-                  okText="删除"
-                  cancelText="取消"
-                  onConfirm={() => run('删除文件', () => api.deleteDocument(row.doc_id))}
-                >
-                  <Button danger size="small">删除</Button>
-                </Popconfirm>
-              </Space>
-            )
+            render: (_, row) => {
+              const running = ['chunking', 'qa_processing', 'embedding_processing'].includes(row.status);
+              return (
+                <Space wrap>
+                  <Button disabled={running} size="small" onClick={() => run('分块', () => api.chunk(row.doc_id))}>分块</Button>
+                  <Button disabled={running} size="small" onClick={() => run('生成 QA', () => api.generateQA(row.doc_id))}>生成 QA</Button>
+                  <Button disabled={running} size="small" onClick={() => run('导入 Chroma', () => api.importChroma(row.doc_id))}>导入 Chroma</Button>
+                  <Button disabled={running} size="small" onClick={() => run('重试失败', () => api.retryFailed(row.doc_id))}>重试失败</Button>
+                  <Link to={`/documents/${row.doc_id}`}>详情</Link>
+                  <Popconfirm
+                    title="确认删除该文件？"
+                    description="会删除原文件、中间结果、状态日志，并尝试删除 Chroma 中的记录。"
+                    okText="删除"
+                    cancelText="取消"
+                    onConfirm={() => run('删除文件', () => api.deleteDocument(row.doc_id))}
+                  >
+                    <Button danger disabled={running} size="small">删除</Button>
+                  </Popconfirm>
+                </Space>
+              );
+            }
           }
         ]}
       />

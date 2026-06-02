@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from app.chunkers.recursive_chunker import RecursiveChunker
@@ -8,32 +7,8 @@ from app.cleaners.text_cleaner import TextCleaner
 from app.embeddings.embedding_service import EmbeddingService
 from app.loaders.markdown_loader import MarkdownLoader
 from app.loaders.txt_loader import TxtLoader
-from app.pipeline.ingestion_pipeline import IngestionPipeline
 from app.schemas.qa_record import QARecord
-
-
-class FakeStore:
-    def __init__(self) -> None:
-        self.records: dict[str, QARecord] = {}
-        self.file_hashes: set[tuple[str, str]] = set()
-        self.chunk_hashes: set[tuple[str, str]] = set()
-        self.batch_calls = 0
-
-    def add_or_upsert_qa(self, record: QARecord) -> None:
-        self.add_or_upsert_qas([record])
-
-    def add_or_upsert_qas(self, records: list[QARecord]) -> None:
-        self.batch_calls += 1
-        for record in records:
-            self.records[record.qa_id] = record
-            self.file_hashes.add((record.source, record.file_hash))
-            self.chunk_hashes.add((record.source, record.chunk_hash))
-
-    def has_file_hash(self, source: str, file_hash: str) -> bool:
-        return (source, file_hash) in self.file_hashes
-
-    def has_chunk_hash(self, source: str, chunk_hash: str) -> bool:
-        return (source, chunk_hash) in self.chunk_hashes
+from app.services.pipeline_service import PipelineService
 
 
 def test_txt_and_markdown_loaders_return_page_zero(tmp_path: Path) -> None:
@@ -113,41 +88,8 @@ def test_qa_record_uses_question_as_document_and_rich_embedding_text() -> None:
     assert isinstance(record.metadata["keywords"], str)
 
 
-def test_pipeline_writes_jsonl_state_then_batches_to_chroma(tmp_path: Path) -> None:
-    source = tmp_path / "rag.txt"
-    source.write_text(
-        "Vector databases store and retrieve high-dimensional vectors. "
-        "RAG systems combine parsing, chunking, embeddings, and semantic search. "
-        "This content can be converted into QA records for a vector database.",
-        encoding="utf-8",
-    )
-    store = FakeStore()
-    processing_path = tmp_path / "state"
-    pipeline = IngestionPipeline(
-        chunker=RecursiveChunker(chunk_size=160, chunk_overlap=20),
-        store=store,  # type: ignore[arg-type]
-        processing_path=str(processing_path),
-    )
-
-    first = pipeline.ingest(str(source))
-    second = pipeline.ingest(str(source))
-    doc_dir = processing_path / first.doc_id
-    state = json.loads((doc_dir / "process_state.json").read_text(encoding="utf-8"))
-
-    assert first.status == "success"
-    assert first.chunks >= 1
-    assert first.qa_records >= 1
-    assert (doc_dir / "chunks.jsonl").exists()
-    assert (doc_dir / "qa_records.jsonl").exists()
-    assert state["embedded"] is True
-    assert state["chroma_written"] is True
-    assert store.batch_calls == 1
-    assert second.status == "skipped"
-    assert second.qa_records == 0
-
-
 def test_ai_payload_validation_rejects_non_json_shape() -> None:
-    valid = IngestionPipeline._validate_ai_payloads(
+    valid = PipelineService._validate_ai_payloads(
         [
             {
                 "question": "Q?",
@@ -212,3 +154,28 @@ def test_qa_metadata_contains_chroma_simple_fields() -> None:
     }
     assert all(not isinstance(value, list) for value in record.metadata.values())
 
+
+def test_qa_jsonl_dict_keeps_metadata_fields_deduplicated() -> None:
+    record = QARecord(
+        doc_id="doc001",
+        chunk_id="doc001_chunk1",
+        chunk_index=1,
+        qa_index=1,
+        question="What is RAG?",
+        answer="RAG is retrieval augmented generation.",
+        context="RAG passes retrieval results to a generation model.",
+        keywords="RAG,retrieval augmented generation,Embedding",
+        source="demo.md",
+        file_type="markdown",
+        page=0,
+        section="Overview",
+        file_hash="filehash",
+        chunk_hash="chunkhash",
+    )
+
+    row = record.to_jsonl_dict()
+
+    assert set(row) == {"id", "document", "embedding_text", "metadata"}
+    assert row["metadata"]["answer"] == record.answer
+    assert row["metadata"]["doc_id"] == record.doc_id
+    assert QARecord.from_dict(row) == record

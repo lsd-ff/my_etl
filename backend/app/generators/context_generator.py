@@ -5,10 +5,10 @@ from __future__ import annotations
 import json
 import re
 import time
-import urllib.error
 import urllib.request
 
 from app.config import settings
+from app.services.http_retry import urlopen_json_with_retries
 
 
 class MockLLM:
@@ -57,12 +57,10 @@ class OpenAICompatibleLLM:
             },
             method="POST",
         )
-        try:
-            with urllib.request.urlopen(request, timeout=120) as response:
-                data = json.loads(response.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="ignore")
-            raise RuntimeError(f"LLM request failed: HTTP {exc.code} {detail}") from exc
+        data = urlopen_json_with_retries(
+            lambda: urllib.request.urlopen(request, timeout=settings.api_timeout_seconds),
+            "LLM",
+        )
         return str(data["choices"][0]["message"]["content"])
 
     def _url(self, path: str) -> str:

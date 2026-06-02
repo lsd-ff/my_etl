@@ -1,5 +1,6 @@
 import { Button, Input, InputNumber, Table, Typography, message } from 'antd';
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../api';
 
 export default function SearchPage() {
@@ -31,17 +32,28 @@ export default function SearchPage() {
         rowKey={(row) => `${row.doc_id}-${row.chunk_id}-${row.question}`}
         dataSource={items}
         loading={loading}
-        expandable={{ expandedRowRender: (record) => <div className="pre-wrap">{record.context}</div> }}
+        scroll={{ x: 'max-content' }}
+        expandable={{
+          expandedRowRender: (record) => (
+            <div className="pre-wrap">
+              <Typography.Text strong>Answer</Typography.Text>
+              <Typography.Paragraph>{record.answer}</Typography.Paragraph>
+              <Typography.Text strong>Context</Typography.Text>
+              <Typography.Paragraph>{record.context}</Typography.Paragraph>
+            </div>
+          )
+        }}
         columns={[
           { title: 'question', dataIndex: 'question', ellipsis: true },
           { title: 'answer', dataIndex: 'answer', ellipsis: true },
           { title: 'keywords', dataIndex: 'keywords', width: 220, ellipsis: true },
           { title: 'source', dataIndex: 'source', width: 180 },
+          { title: 'section', dataIndex: 'section', width: 180, ellipsis: true },
           { title: 'page', dataIndex: 'page', width: 80 },
-          { title: 'score', dataIndex: 'score', width: 100, render: (value) => Number(value).toFixed(3) }
+          { title: 'score', dataIndex: 'score', width: 100, sorter: (a, b) => a.score - b.score, render: (value) => Number(value).toFixed(3) },
+          { title: 'QA', width: 80, render: (_, row) => <Link to={`/documents/${row.doc_id}/qa`}>查看</Link> }
         ]}
       />
     </div>
   );
 }
-

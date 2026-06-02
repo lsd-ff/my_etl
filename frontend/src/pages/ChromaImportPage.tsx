@@ -38,15 +38,15 @@ export default function ChromaImportPage() {
         rowKey="doc_id"
         dataSource={data}
         loading={loading}
+        scroll={{ x: 'max-content' }}
         columns={[
-          { title: '文件名', dataIndex: 'filename' },
-          { title: '状态', dataIndex: 'status', render: (status) => <StatusBadge status={status} /> },
-          { title: 'QA 数', dataIndex: 'qa_count' },
-          { title: '已导入', dataIndex: 'imported_to_chroma', render: (value) => (value ? '是' : '否') },
-          { title: '操作', render: (_, row) => <Space><Button onClick={() => importOne(row.doc_id)}>导入 Chroma</Button></Space> }
+          { title: '文件名', dataIndex: 'filename', width: 220 },
+          { title: '状态', dataIndex: 'status', width: 150, render: (status) => <StatusBadge status={status} /> },
+          { title: 'QA 数', dataIndex: 'qa_count', width: 110 },
+          { title: '已导入', dataIndex: 'imported_to_chroma', width: 110, render: (value) => (value ? '是' : '否') },
+          { title: '操作', width: 180, render: (_, row) => <Space><Button onClick={() => importOne(row.doc_id)}>导入 Chroma</Button></Space> }
         ]}
       />
     </div>
   );
 }
-

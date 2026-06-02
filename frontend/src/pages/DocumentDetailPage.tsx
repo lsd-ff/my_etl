@@ -10,11 +10,22 @@ export default function DocumentDetailPage() {
   const { docId = '' } = useParams();
   const navigate = useNavigate();
   const [state, setState] = useState<Record<string, any>>({});
+  const [chroma, setChroma] = useState<Record<string, any>>({});
   const [log, setLog] = useState('');
 
   const load = async () => {
-    setState(await api.getState(docId));
+    const nextState = await api.getState(docId);
+    const processedChunkIds = Array.isArray(nextState.processed_chunk_ids) ? nextState.processed_chunk_ids : [];
+    if (!nextState.current_chunk_id && processedChunkIds.length) {
+      nextState.current_chunk_id = processedChunkIds[processedChunkIds.length - 1];
+    }
+    if (!nextState.current_qa_id && Number(nextState.qa_records || 0) > 0) {
+      const page = await api.qaRecords(docId, Number(nextState.qa_records), 1);
+      nextState.current_qa_id = String(page.items?.[0]?.id || '');
+    }
+    setState(nextState);
     setLog((await api.getLogs(docId)).log);
+    setChroma(await api.chromaInfo());
   };
 
   useEffect(() => { load(); }, [docId]);
@@ -49,14 +60,20 @@ export default function DocumentDetailPage() {
     }
   };
 
+  const running = ['chunking', 'qa_processing', 'embedding_processing'].includes(state.status);
+  const isEmbeddingStep = state.current_step === 'import_chroma' || Number(state.total_embedding_records || 0) > 0;
+  const progressTotal = isEmbeddingStep ? state.total_embedding_records : state.total_chunks;
+  const progressDone = isEmbeddingStep ? state.embedded_records : state.processed_chunks;
+
   return (
     <div className="page">
       <div className="toolbar">
         <Typography.Title level={3} style={{ marginRight: 'auto' }}>{state.filename || docId}</Typography.Title>
-        <Button onClick={load}>刷新</Button>
-        <Button onClick={() => run('分块', () => api.chunk(docId))}>分块</Button>
-        <Button onClick={() => run('生成 QA', () => api.generateQA(docId))}>生成 QA</Button>
-        <Button onClick={() => run('导入 Chroma', () => api.importChroma(docId))}>导入 Chroma</Button>
+        <Button onClick={() => load()}>刷新</Button>
+        <Button disabled={running} onClick={() => run('分块', () => api.chunk(docId))}>分块</Button>
+        <Button disabled={running} onClick={() => run('生成 QA', () => api.generateQA(docId))}>生成 QA</Button>
+        <Button disabled={running} onClick={() => run('导入 Chroma', () => api.importChroma(docId))}>导入 Chroma</Button>
+        <Button disabled={running} onClick={() => run('清理 QA JSONL', () => api.compactQARecords(docId))}>清理 QA</Button>
         <Popconfirm
           title="确认删除该文件？"
           description="会删除原文件、中间结果、状态日志，并尝试删除 Chroma 中的记录。"
@@ -72,8 +89,16 @@ export default function DocumentDetailPage() {
         <Descriptions.Item label="状态"><StatusBadge status={state.status} /></Descriptions.Item>
         <Descriptions.Item label="文件类型">{state.file_type}</Descriptions.Item>
         <Descriptions.Item label="当前步骤">{state.current_step}</Descriptions.Item>
+        <Descriptions.Item label="进度">{state.progress_message || '-'}</Descriptions.Item>
+        <Descriptions.Item label="当前 chunk">{state.current_chunk_id || '-'}</Descriptions.Item>
+        <Descriptions.Item label="当前 QA">{state.current_qa_id || '-'}</Descriptions.Item>
         <Descriptions.Item label="创建时间">{state.created_at}</Descriptions.Item>
         <Descriptions.Item label="更新时间">{state.updated_at}</Descriptions.Item>
+        <Descriptions.Item label="Chroma collection" span={2}>
+          <span className="mono">{chroma.collection || '-'}</span>
+        </Descriptions.Item>
+        <Descriptions.Item label="Embedding 模型">{chroma.embedding_model || '-'}</Descriptions.Item>
+        <Descriptions.Item label="Chroma 记录数">{chroma.count ?? '-'}</Descriptions.Item>
         <Descriptions.Item label="错误" span={2}>{state.error || '-'}</Descriptions.Item>
       </Descriptions>
       <Space size="large" wrap>
@@ -81,8 +106,9 @@ export default function DocumentDetailPage() {
         <Statistic title="processed" value={state.processed_chunks || 0} />
         <Statistic title="QA" value={state.qa_records || 0} />
         <Statistic title="failed" value={state.failed_chunks || 0} />
+        <Statistic title="embedding" value={state.embedded_records || 0} suffix={`/ ${state.total_embedding_records || 0}`} />
       </Space>
-      <ProgressBar total={state.total_chunks} done={state.processed_chunks} />
+      <ProgressBar total={progressTotal} done={progressDone} />
       <Space>
         <Link to={`/documents/${docId}/chunks`}>查看 chunks</Link>
         <Link to={`/documents/${docId}/qa`}>查看 QA</Link>

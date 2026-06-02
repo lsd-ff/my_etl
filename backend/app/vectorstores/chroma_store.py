@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
+import re
+from collections.abc import Callable
 from typing import Any
 
 from app.config import settings
@@ -22,25 +25,66 @@ class ChromaStore:
             raise ImportError("Chroma support requires chromadb. Install requirements.txt.") from exc
 
         self.persist_path = persist_path or settings.chroma_path
-        self.collection_name = collection_name or settings.chroma_collection
+        self.base_collection_name = collection_name or settings.chroma_collection
+        self.collection_name = self._collection_name_for_current_embedding(self.base_collection_name)
         self.embedding_service = embedding_service or EmbeddingService()
         if settings.chroma_mode == "http":
             self.client = chromadb.HttpClient(host=settings.chroma_host, port=settings.chroma_port)
         else:
             self.client = chromadb.PersistentClient(path=self.persist_path)
-        self.collection = self.client.get_or_create_collection(name=self.collection_name)
+        self.collection = self.client.get_or_create_collection(
+            name=self.collection_name,
+            metadata=self._collection_metadata(),
+        )
+
+    @staticmethod
+    def _collection_name_for_current_embedding(base_name: str) -> str:
+        if settings.embedding_provider == "mock":
+            namespace = f"mock_{settings.embedding_dim}"
+        else:
+            namespace = f"{settings.embedding_provider}_{settings.embedding_model}"
+        return ChromaStore._normalize_collection_name(f"{base_name}_{namespace}")
+
+    @staticmethod
+    def _normalize_collection_name(raw_name: str) -> str:
+        normalized = re.sub(r"[^A-Za-z0-9._-]+", "_", raw_name).strip("._-")
+        normalized = normalized or "collection"
+        if len(normalized) <= 63:
+            return normalized
+
+        digest = hashlib.sha1(raw_name.encode("utf-8")).hexdigest()[:8]
+        prefix_length = 63 - len(digest) - 1
+        prefix = normalized[:prefix_length].rstrip("._-") or "collection"
+        return f"{prefix}_{digest}"
+
+    @staticmethod
+    def _collection_metadata() -> dict[str, str | int]:
+        metadata: dict[str, str | int] = {
+            "embedding_provider": settings.embedding_provider,
+            "embedding_model": settings.embedding_model,
+        }
+        if settings.embedding_provider == "mock":
+            metadata["embedding_dim"] = settings.embedding_dim
+        return metadata
 
     def add_or_upsert_qa(self, record: QARecord) -> None:
         self.add_or_upsert_qas([record])
 
-    def add_or_upsert_qas(self, records: list[QARecord]) -> None:
+    def add_or_upsert_qas(
+        self,
+        records: list[QARecord],
+        progress_callback: Callable[[int, int, QARecord], None] | None = None,
+    ) -> None:
         if not records:
             return
         ids: list[str] = []
         documents: list[str] = []
         embeddings: list[list[float]] = []
         metadatas: list[dict[str, Any]] = []
-        for record in records:
+        total = len(records)
+        for index, record in enumerate(records, start=1):
+            if progress_callback:
+                progress_callback(index, total, record)
             ids.append(record.qa_id)
             documents.append(record.document)
             embeddings.append(self.embedding_service.embed(record.embedding_text))
@@ -87,6 +131,7 @@ class ChromaStore:
                     "keywords": metadata.get("keywords", ""),
                     "source": metadata.get("source", ""),
                     "page": metadata.get("page", 0),
+                    "section": metadata.get("section", ""),
                     "score": score,
                     "chunk_id": metadata.get("chunk_id", ""),
                     "doc_id": metadata.get("doc_id", ""),
@@ -104,3 +149,17 @@ class ChromaStore:
 
     def delete_doc(self, doc_id: str) -> None:
         self.collection.delete(where={"doc_id": doc_id})
+
+    def info(self) -> dict[str, Any]:
+        try:
+            count = self.collection.count()
+        except Exception:
+            count = 0
+        return {
+            "collection": self.collection_name,
+            "base_collection": self.base_collection_name,
+            "embedding_provider": settings.embedding_provider,
+            "embedding_model": settings.embedding_model,
+            "persist_path": self.persist_path,
+            "count": count,
+        }

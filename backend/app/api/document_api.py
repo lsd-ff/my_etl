@@ -34,10 +34,19 @@ def delete_file(doc_id: str) -> dict[str, Any]:
 
 @router.get("/files/{doc_id}/state")
 def get_state(doc_id: str) -> dict[str, Any]:
+    service = DocumentService()
     try:
-        state = DocumentService().load_state(doc_id)
+        state = service.load_state(doc_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if not state.get("current_chunk_id"):
+        processed_chunk_ids = state.get("processed_chunk_ids") or []
+        if processed_chunk_ids:
+            state["current_chunk_id"] = processed_chunk_ids[-1]
+    if not state.get("current_qa_id"):
+        qa_rows = service.read_jsonl(service.qa_records_path(doc_id))
+        if qa_rows:
+            state["current_qa_id"] = qa_rows[-1].get("id", "")
     return {
         "doc_id": state.get("doc_id", doc_id),
         "status": state.get("status", ""),

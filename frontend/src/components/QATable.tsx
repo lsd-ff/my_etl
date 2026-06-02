@@ -6,6 +6,7 @@ export default function QATable({ data, total, loading, page, pageSize, onChange
       rowKey="id"
       dataSource={data}
       loading={loading}
+      scroll={{ x: 'max-content' }}
       pagination={{ current: page, pageSize, total, showSizeChanger: true }}
       onChange={(pagination) => onChange(pagination.current || 1, pagination.pageSize || pageSize)}
       expandable={{
@@ -27,4 +28,3 @@ export default function QATable({ data, total, loading, page, pageSize, onChange
     />
   );
 }
-

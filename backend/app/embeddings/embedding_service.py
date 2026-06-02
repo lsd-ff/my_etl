@@ -6,10 +6,10 @@ import hashlib
 import json
 import math
 import re
-import urllib.error
 import urllib.request
 
 from app.config import settings
+from app.services.http_retry import urlopen_json_with_retries
 
 
 class MockEmbedding:
@@ -74,10 +74,8 @@ class OpenAICompatibleEmbedding:
             },
             method="POST",
         )
-        try:
-            with urllib.request.urlopen(request, timeout=120) as response:
-                data = json.loads(response.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="ignore")
-            raise RuntimeError(f"Embedding request failed: HTTP {exc.code} {detail}") from exc
+        data = urlopen_json_with_retries(
+            lambda: urllib.request.urlopen(request, timeout=settings.api_timeout_seconds),
+            "Embedding",
+        )
         return [float(value) for value in data["data"][0]["embedding"]]
