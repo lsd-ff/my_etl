@@ -1,4 +1,4 @@
-import { Table, Typography } from 'antd';
+import { Space, Table, Tag, Typography } from 'antd';
 
 export default function ChunkTable({ data, total, loading, page, pageSize, onChange }: any) {
   return (
@@ -15,6 +15,16 @@ export default function ChunkTable({ data, total, loading, page, pageSize, onCha
         { title: 'index', dataIndex: 'chunk_index', width: 90 },
         { title: 'page', dataIndex: 'page', width: 80 },
         { title: 'section', dataIndex: 'section', width: 160 },
+        { title: 'tokens', dataIndex: 'token_count', width: 90 },
+        { title: 'quality', dataIndex: 'quality_score', width: 90 },
+        {
+          title: 'warnings',
+          dataIndex: 'warnings',
+          width: 260,
+          render: (value: string[] = []) => (
+            <Space size={[4, 4]} wrap>{value.map((item) => <Tag key={item}>{item}</Tag>)}</Space>
+          )
+        },
         { title: 'content', dataIndex: 'content', ellipsis: true },
         { title: 'chunk_hash', dataIndex: 'chunk_hash', width: 220, ellipsis: true }
       ]}

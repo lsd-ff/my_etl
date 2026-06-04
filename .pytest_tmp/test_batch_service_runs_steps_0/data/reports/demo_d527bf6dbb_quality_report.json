@@ -1,0 +1,36 @@
+{
+  "doc_id": "demo_d527bf6dbb",
+  "filename": "demo.txt",
+  "parse": {
+    "segments": 1,
+    "cleaned_segments": 1,
+    "file_type": "txt"
+  },
+  "cleaning": [
+    {
+      "segment_index": 1,
+      "page": 0,
+      "section": "",
+      "block_type": "text",
+      "original_chars": 159,
+      "cleaned_chars": 159,
+      "original_lines": 1,
+      "cleaned_lines": 1,
+      "removed_line_count": 0,
+      "noise_line_count": 0,
+      "duplicate_line_count": 0,
+      "removal_ratio": 0.0,
+      "mojibake_markers": 0,
+      "warnings": [],
+      "removed_lines": []
+    }
+  ],
+  "chunking": {
+    "chunks": 1,
+    "low_quality_chunks": 1,
+    "avg_quality_score": 0.82,
+    "warning_counts": {
+      "chunk_too_short": 1
+    }
+  }
+}

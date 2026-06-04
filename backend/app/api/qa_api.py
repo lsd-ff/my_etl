@@ -50,10 +50,22 @@ def get_failed_chunks(
     return service.paginate_jsonl(service.failed_chunks_path(doc_id), page=page, page_size=page_size)
 
 
+@router.get("/{doc_id}/review-queue")
+def get_review_queue(
+    doc_id: str,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=100, ge=1, le=500),
+) -> dict[str, Any]:
+    service = DocumentService()
+    try:
+        return service.review_queue(doc_id, page=page, page_size=page_size)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @router.post("/{doc_id}/retry-failed")
 def retry_failed(doc_id: str) -> dict[str, Any]:
     try:
         return PipelineService().retry_failed(doc_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-

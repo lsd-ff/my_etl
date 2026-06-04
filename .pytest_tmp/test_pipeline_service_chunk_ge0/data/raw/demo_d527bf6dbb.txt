@@ -1,0 +1,1 @@
+Vector databases store high-dimensional vectors. RAG pipelines parse documents, split text into chunks, generate QA records, and import embeddings into Chroma.

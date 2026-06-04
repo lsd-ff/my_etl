@@ -21,6 +21,9 @@ class TxtLoader(BaseLoader):
                 file_type="txt",
                 page=0,
                 section="",
+                block_type="text",
+                start_offset=0,
+                end_offset=len(text),
             )
         ]
 
@@ -32,4 +35,3 @@ class TxtLoader(BaseLoader):
             except UnicodeDecodeError:
                 continue
         return path.read_text(encoding="utf-8", errors="ignore")
-

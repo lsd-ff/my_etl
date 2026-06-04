@@ -92,6 +92,8 @@ export default function DocumentDetailPage() {
         <Descriptions.Item label="进度">{state.progress_message || '-'}</Descriptions.Item>
         <Descriptions.Item label="当前 chunk">{state.current_chunk_id || '-'}</Descriptions.Item>
         <Descriptions.Item label="当前 QA">{state.current_qa_id || '-'}</Descriptions.Item>
+        <Descriptions.Item label="低质量 chunk">{state.low_quality_chunks ?? 0}</Descriptions.Item>
+        <Descriptions.Item label="低质量 QA">{state.low_quality_qa ?? 0}</Descriptions.Item>
         <Descriptions.Item label="创建时间">{state.created_at}</Descriptions.Item>
         <Descriptions.Item label="更新时间">{state.updated_at}</Descriptions.Item>
         <Descriptions.Item label="Chroma collection" span={2}>
@@ -106,12 +108,14 @@ export default function DocumentDetailPage() {
         <Statistic title="processed" value={state.processed_chunks || 0} />
         <Statistic title="QA" value={state.qa_records || 0} />
         <Statistic title="failed" value={state.failed_chunks || 0} />
+        <Statistic title="review" value={state.review_items || 0} />
         <Statistic title="embedding" value={state.embedded_records || 0} suffix={`/ ${state.total_embedding_records || 0}`} />
       </Space>
       <ProgressBar total={progressTotal} done={progressDone} />
       <Space>
         <Link to={`/documents/${docId}/chunks`}>查看 chunks</Link>
         <Link to={`/documents/${docId}/qa`}>查看 QA</Link>
+        <Link to={`/documents/${docId}/review`}>审核队列</Link>
       </Space>
       <LogViewer log={log} />
     </div>

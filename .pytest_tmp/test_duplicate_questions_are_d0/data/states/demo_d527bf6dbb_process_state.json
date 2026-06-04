@@ -1,0 +1,34 @@
+{
+  "doc_id": "demo_d527bf6dbb",
+  "filename": "demo.txt",
+  "stored_filename": "demo_d527bf6dbb.txt",
+  "file_path": "C:\\Users\\w\\Desktop\\my_etl\\.pytest_tmp\\test_duplicate_questions_are_d0\\data\\raw\\demo_d527bf6dbb.txt",
+  "file_type": "txt",
+  "status": "qa_done",
+  "file_hash": "d527bf6dbb73509433928ee5194f4963631397a65b72cd824a4360d798ccf99f",
+  "total_chunks": 1,
+  "processed_chunks": 1,
+  "failed_chunks": 0,
+  "qa_records": 1,
+  "imported_to_chroma": false,
+  "created_at": "2026-06-03T13:12:32.476915+00:00",
+  "updated_at": "2026-06-03T13:12:32.572879+00:00",
+  "current_step": "generate_qa",
+  "current_chunk_id": "",
+  "current_chunk_index": 0,
+  "total_work_chunks": 1,
+  "current_qa_id": "",
+  "embedded_records": 0,
+  "total_embedding_records": 0,
+  "progress_message": "QA generation finished",
+  "error": "",
+  "processed_chunk_hashes": [
+    "d527bf6dbb73509433928ee5194f4963631397a65b72cd824a4360d798ccf99f"
+  ],
+  "processed_chunk_ids": [
+    "demo_d527bf6dbb_chunk1"
+  ],
+  "low_quality_chunks": 1,
+  "low_quality_qa": 1,
+  "review_items": 2
+}

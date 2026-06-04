@@ -24,6 +24,7 @@ class DocumentService:
         self.states_dir = self.data_dir / "states"
         self.failed_dir = self.data_dir / "failed"
         self.logs_dir = self.data_dir / "logs"
+        self.reports_dir = self.data_dir / "reports"
         self.chroma_dir = self.data_dir / "chroma"
         self.ensure_directories()
 
@@ -35,6 +36,7 @@ class DocumentService:
             self.states_dir,
             self.failed_dir,
             self.logs_dir,
+            self.reports_dir,
             self.chroma_dir,
         ):
             path.mkdir(parents=True, exist_ok=True)
@@ -77,6 +79,9 @@ class DocumentService:
             "error": "",
             "processed_chunk_hashes": [],
             "processed_chunk_ids": [],
+            "low_quality_chunks": 0,
+            "low_quality_qa": 0,
+            "review_items": 0,
         }
         self.write_jsonl(self.chunks_path(doc_id), [])
         self.write_jsonl(self.qa_records_path(doc_id), [])
@@ -116,6 +121,9 @@ class DocumentService:
 
     def log_path(self, doc_id: str) -> Path:
         return self.logs_dir / f"{doc_id}.log"
+
+    def quality_report_path(self, doc_id: str) -> Path:
+        return self.reports_dir / f"{doc_id}_quality_report.json"
 
     def load_state(self, doc_id: str, default: dict[str, Any] | None = None) -> dict[str, Any]:
         path = self.state_path(doc_id)
@@ -220,6 +228,7 @@ class DocumentService:
             self.qa_records_path(doc_id),
             self.failed_chunks_path(doc_id),
             self.log_path(doc_id),
+            self.quality_report_path(doc_id),
             self.state_path(doc_id),
         ]
         deleted_files = 0
@@ -286,6 +295,85 @@ class DocumentService:
         )
         self.append_log(doc_id, f"Compacted QA JSONL for {state.get('filename', doc_id)}: {len(compacted)} records")
         return {"doc_id": doc_id, "records": len(compacted), "status": "compacted"}
+
+    def write_quality_report(self, doc_id: str, report: dict[str, Any]) -> None:
+        self.quality_report_path(doc_id).write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def read_quality_report(self, doc_id: str) -> dict[str, Any]:
+        path = self.quality_report_path(doc_id)
+        if not path.exists():
+            return {}
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    def review_queue(self, doc_id: str, page: int = 1, page_size: int = 100) -> dict[str, Any]:
+        self.load_state(doc_id)
+        items: list[dict[str, Any]] = []
+        for chunk in self.read_jsonl(self.chunks_path(doc_id)):
+            warnings = chunk.get("warnings") or []
+            quality_score = float(chunk.get("quality_score") or 1.0)
+            if warnings or quality_score < 0.75:
+                items.append(
+                    {
+                        "type": "chunk",
+                        "severity": "warning" if quality_score >= 0.5 else "high",
+                        "id": chunk.get("chunk_id", ""),
+                        "score": quality_score,
+                        "reasons": warnings,
+                        "page": chunk.get("page", 0),
+                        "section": chunk.get("section", ""),
+                        "content": chunk.get("content", ""),
+                    }
+                )
+        for row in self.read_jsonl(self.qa_records_path(doc_id)):
+            metadata = row.get("metadata") or {}
+            warnings = [
+                item.strip()
+                for item in str(metadata.get("validation_warnings") or "").split(",")
+                if item.strip()
+            ]
+            quality_score = float(metadata.get("quality_score") or 1.0)
+            if warnings or quality_score < 0.75:
+                items.append(
+                    {
+                        "type": "qa",
+                        "severity": "warning" if quality_score >= 0.5 else "high",
+                        "id": row.get("id", ""),
+                        "score": quality_score,
+                        "reasons": warnings,
+                        "page": metadata.get("page", 0),
+                        "section": metadata.get("section", ""),
+                        "question": row.get("document", ""),
+                        "answer": metadata.get("answer", ""),
+                        "evidence": metadata.get("evidence", ""),
+                    }
+                )
+        for row in self.read_jsonl(self.failed_chunks_path(doc_id)):
+            items.append(
+                {
+                    "type": "failed_chunk",
+                    "severity": "high",
+                    "id": row.get("chunk_id", ""),
+                    "score": 0,
+                    "reasons": [row.get("failure_class") or row.get("error_type") or "failed"],
+                    "page": row.get("page", 0),
+                    "section": row.get("section", ""),
+                    "content": row.get("content", ""),
+                    "error": row.get("error", ""),
+                }
+            )
+        total = len(items)
+        start = max(0, (page - 1) * page_size)
+        end = start + page_size
+        return {
+            "total": total,
+            "items": items[start:end],
+            "summary": {
+                "chunks": sum(1 for item in items if item["type"] == "chunk"),
+                "qa": sum(1 for item in items if item["type"] == "qa"),
+                "failed_chunks": sum(1 for item in items if item["type"] == "failed_chunk"),
+                "high": sum(1 for item in items if item["severity"] == "high"),
+            },
+        }
 
     @staticmethod
     def embedding_text(question: str, context: str, keywords: str) -> str:

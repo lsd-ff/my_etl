@@ -141,6 +141,26 @@ def test_duplicate_questions_are_deduped(tmp_path: Path) -> None:
     assert rows[0]["document"] == "What is retry?"
 
 
+def test_review_queue_collects_quality_items(tmp_path: Path) -> None:
+    service = DocumentService(tmp_path / "data")
+    doc_id = create_document(service)
+    pipeline = PipelineService(
+        document_service=service,
+        chunker=RecursiveChunker(chunk_size=60, chunk_overlap=10),
+        qa_generator=FailingOnceGenerator(),
+        store=FakeStore(),
+    )
+
+    pipeline.chunk_document(doc_id)
+    result = pipeline.generate_qa(doc_id)
+    queue = service.review_queue(doc_id)
+
+    assert result["status"] == "qa_failed"
+    assert queue["total"] >= 1
+    assert queue["summary"]["failed_chunks"] == 1
+    assert any(item["type"] == "failed_chunk" for item in queue["items"])
+
+
 def test_compact_qa_records_removes_redundant_top_level_fields(tmp_path: Path) -> None:
     service = DocumentService(tmp_path / "data")
     doc_id = create_document(service)

@@ -19,24 +19,85 @@ class DocxLoader(BaseLoader):
             raise ImportError("DOCX support requires python-docx. Install requirements.txt.") from exc
 
         document = Document(str(path))
-        lines: list[str] = []
+        segments: list[LoadedSegment] = []
+        current_lines: list[str] = []
+        heading_path: list[str] = []
         section = ""
+        offset = 0
+
+        def flush(block_type: str = "text") -> None:
+            nonlocal current_lines, offset
+            text = "\n".join(current_lines).strip()
+            if not text:
+                current_lines = []
+                return
+            start = offset
+            end = start + len(text)
+            segments.append(
+                LoadedSegment(
+                    text=text,
+                    source=str(path),
+                    file_type="docx",
+                    page=0,
+                    section=section,
+                    heading_path=tuple(heading_path),
+                    block_type=block_type,
+                    start_offset=start,
+                    end_offset=end,
+                )
+            )
+            offset = end + 1
+            current_lines = []
+
         for paragraph in document.paragraphs:
             text = paragraph.text.strip()
             if not text:
                 continue
             style_name = (paragraph.style.name or "").lower() if paragraph.style else ""
             if "heading" in style_name or "标题" in style_name:
+                flush()
                 section = text
-            lines.append(text)
+                level = self._heading_level(style_name)
+                heading_path[:] = heading_path[: max(0, level - 1)]
+                heading_path.append(text)
+                current_lines.append(text)
+                flush("heading")
+                continue
+            current_lines.append(text)
 
-        return [
-            LoadedSegment(
-                text="\n".join(lines),
-                source=str(path),
-                file_type="docx",
-                page=0,
-                section=section,
-            )
-        ]
+        flush()
 
+        for table_index, table in enumerate(document.tables, start=1):
+            rows: list[str] = []
+            for row in table.rows:
+                cells = [cell.text.strip().replace("\n", " ") for cell in row.cells]
+                if any(cells):
+                    rows.append(" | ".join(cells))
+            if rows:
+                text = "\n".join(rows)
+                start = offset
+                end = start + len(text)
+                segments.append(
+                    LoadedSegment(
+                        text=text,
+                        source=str(path),
+                        file_type="docx",
+                        page=0,
+                        section=section,
+                        heading_path=tuple(heading_path),
+                        block_type="table",
+                        start_offset=start,
+                        end_offset=end,
+                        warnings=(f"table_{table_index}",),
+                    )
+                )
+                offset = end + 1
+
+        return segments
+
+    @staticmethod
+    def _heading_level(style_name: str) -> int:
+        for token in reversed(style_name.split()):
+            if token.isdigit():
+                return max(1, min(6, int(token)))
+        return 1

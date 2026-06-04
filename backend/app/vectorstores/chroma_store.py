@@ -4,12 +4,19 @@ from __future__ import annotations
 
 import hashlib
 import re
+from pathlib import Path
+from threading import RLock
 from collections.abc import Callable
 from typing import Any
 
 from app.config import settings
 from app.embeddings.embedding_service import EmbeddingService
 from app.schemas.qa_record import QARecord
+
+
+_CHROMA_LOCK = RLock()
+_CLIENT_CACHE: dict[str, Any] = {}
+_COLLECTION_CACHE: dict[tuple[str, str], Any] = {}
 
 
 class ChromaStore:
@@ -24,18 +31,38 @@ class ChromaStore:
         except ImportError as exc:
             raise ImportError("Chroma support requires chromadb. Install requirements.txt.") from exc
 
-        self.persist_path = persist_path or settings.chroma_path
+        self.persist_path = self._normalize_persist_path(persist_path or settings.chroma_path)
         self.base_collection_name = collection_name or settings.chroma_collection
         self.collection_name = self._collection_name_for_current_embedding(self.base_collection_name)
         self.embedding_service = embedding_service or EmbeddingService()
+        with _CHROMA_LOCK:
+            self.client = self._client(chromadb)
+            collection_key = (self._client_key(), self.collection_name)
+            if collection_key not in _COLLECTION_CACHE:
+                _COLLECTION_CACHE[collection_key] = self.client.get_or_create_collection(
+                    name=self.collection_name,
+                    metadata=self._collection_metadata(),
+                )
+            self.collection = _COLLECTION_CACHE[collection_key]
+
+    @staticmethod
+    def _normalize_persist_path(path: str) -> str:
+        return str(Path(path).expanduser().resolve())
+
+    def _client_key(self) -> str:
         if settings.chroma_mode == "http":
-            self.client = chromadb.HttpClient(host=settings.chroma_host, port=settings.chroma_port)
+            return f"http://{settings.chroma_host}:{settings.chroma_port}"
+        return self.persist_path
+
+    def _client(self, chromadb: Any) -> Any:
+        key = self._client_key()
+        if key in _CLIENT_CACHE:
+            return _CLIENT_CACHE[key]
+        if settings.chroma_mode == "http":
+            _CLIENT_CACHE[key] = chromadb.HttpClient(host=settings.chroma_host, port=settings.chroma_port)
         else:
-            self.client = chromadb.PersistentClient(path=self.persist_path)
-        self.collection = self.client.get_or_create_collection(
-            name=self.collection_name,
-            metadata=self._collection_metadata(),
-        )
+            _CLIENT_CACHE[key] = chromadb.PersistentClient(path=self.persist_path)
+        return _CLIENT_CACHE[key]
 
     @staticmethod
     def _collection_name_for_current_embedding(base_name: str) -> str:
@@ -95,28 +122,30 @@ class ChromaStore:
             "embeddings": embeddings,
             "metadatas": metadatas,
         }
-        if hasattr(self.collection, "upsert"):
-            self.collection.upsert(**payload)
-            return
-        existing = self.collection.get(ids=ids)
-        existing_ids = set(existing.get("ids") or [])
-        new_indexes = [index for index, qa_id in enumerate(ids) if qa_id not in existing_ids]
-        if not new_indexes:
-            return
-        self.collection.add(
-            ids=[ids[index] for index in new_indexes],
-            documents=[documents[index] for index in new_indexes],
-            embeddings=[embeddings[index] for index in new_indexes],
-            metadatas=[metadatas[index] for index in new_indexes],
-        )
+        with _CHROMA_LOCK:
+            if hasattr(self.collection, "upsert"):
+                self.collection.upsert(**payload)
+                return
+            existing = self.collection.get(ids=ids)
+            existing_ids = set(existing.get("ids") or [])
+            new_indexes = [index for index, qa_id in enumerate(ids) if qa_id not in existing_ids]
+            if not new_indexes:
+                return
+            self.collection.add(
+                ids=[ids[index] for index in new_indexes],
+                documents=[documents[index] for index in new_indexes],
+                embeddings=[embeddings[index] for index in new_indexes],
+                metadatas=[metadatas[index] for index in new_indexes],
+            )
 
     def search(self, query: str, top_k: int = 5) -> list[dict[str, Any]]:
         embedding = self.embedding_service.embed(query)
-        result = self.collection.query(
-            query_embeddings=[embedding],
-            n_results=top_k,
-            include=["documents", "metadatas", "distances"],
-        )
+        with _CHROMA_LOCK:
+            result = self.collection.query(
+                query_embeddings=[embedding],
+                n_results=top_k,
+                include=["documents", "metadatas", "distances"],
+            )
         documents = result.get("documents", [[]])[0]
         metadatas = result.get("metadatas", [[]])[0]
         distances = result.get("distances", [[]])[0]
@@ -140,19 +169,23 @@ class ChromaStore:
         return rows
 
     def has_file_hash(self, source: str, file_hash: str) -> bool:
-        result = self.collection.get(where={"$and": [{"source": source}, {"file_hash": file_hash}]}, limit=1)
+        with _CHROMA_LOCK:
+            result = self.collection.get(where={"$and": [{"source": source}, {"file_hash": file_hash}]}, limit=1)
         return bool(result.get("ids"))
 
     def has_chunk_hash(self, source: str, chunk_hash: str) -> bool:
-        result = self.collection.get(where={"$and": [{"source": source}, {"chunk_hash": chunk_hash}]}, limit=1)
+        with _CHROMA_LOCK:
+            result = self.collection.get(where={"$and": [{"source": source}, {"chunk_hash": chunk_hash}]}, limit=1)
         return bool(result.get("ids"))
 
     def delete_doc(self, doc_id: str) -> None:
-        self.collection.delete(where={"doc_id": doc_id})
+        with _CHROMA_LOCK:
+            self.collection.delete(where={"doc_id": doc_id})
 
     def info(self) -> dict[str, Any]:
         try:
-            count = self.collection.count()
+            with _CHROMA_LOCK:
+                count = self.collection.count()
         except Exception:
             count = 0
         return {

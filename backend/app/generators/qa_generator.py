@@ -91,6 +91,9 @@ class QAGenerator:
                     "answer": answer,
                     "context": context,
                     "keywords": keywords,
+                    "evidence": answer,
+                    "answer_type": self._answer_type_from_question(question),
+                    "confidence": "0.85",
                 }
             )
         return payloads
@@ -105,13 +108,16 @@ class QAGenerator:
 3. qas 生成 1 到 5 条，问题类型尽量覆盖定义、原理、作用、应用、对比、步骤。
 4. 如果信息量不足，可以少生成。
 5. answer 必须基于原文，不要编造。
+6. 每条 QA 必须给 evidence，evidence 是文档片段中的原文证据句或短段。
+7. answer_type 只能是：定义、原理、作用、应用、对比、步骤、事实、限制。
+8. confidence 是 0 到 1 的数字，表示答案由原文支撑的置信度。
 
 JSON 格式：
 {{
   "context": "...",
   "keywords": "关键词1,关键词2,关键词3",
   "qas": [
-    {{"question": "...", "answer": "..."}}
+    {{"question": "...", "answer": "...", "evidence": "...", "answer_type": "定义", "confidence": 0.9}}
   ]
 }}
 
@@ -131,6 +137,9 @@ JSON 格式：
                 continue
             question = str(item.get("question") or "").strip()
             answer = str(item.get("answer") or "").strip()
+            evidence = str(item.get("evidence") or "").strip()
+            answer_type = str(item.get("answer_type") or "").strip()
+            confidence = str(item.get("confidence") or "").strip()
             item_context = str(item.get("context") or context).strip()
             item_keywords = str(item.get("keywords") or keywords).strip()
             if question and answer and item_context and item_keywords:
@@ -140,6 +149,9 @@ JSON 格式：
                         "answer": answer,
                         "context": item_context,
                         "keywords": item_keywords,
+                        "evidence": evidence,
+                        "answer_type": answer_type,
+                        "confidence": confidence,
                     }
                 )
         return payloads
@@ -184,3 +196,19 @@ JSON 格式：
             f"{topic}与相关概念有什么区别？",
             f"使用{topic}的一般步骤是什么？",
         ]
+
+    @staticmethod
+    def _answer_type_from_question(question: str) -> str:
+        if "步骤" in question:
+            return "步骤"
+        if "原理" in question:
+            return "原理"
+        if "作用" in question:
+            return "作用"
+        if "场景" in question:
+            return "应用"
+        if "区别" in question:
+            return "对比"
+        if "什么是" in question:
+            return "定义"
+        return "事实"

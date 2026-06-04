@@ -18,6 +18,7 @@ import ChunkViewerPage from './pages/ChunkViewerPage';
 import QAViewerPage from './pages/QAViewerPage';
 import ChromaImportPage from './pages/ChromaImportPage';
 import SearchPage from './pages/SearchPage';
+import ReviewQueuePage from './pages/ReviewQueuePage';
 
 const { Header, Content, Sider } = Layout;
 
@@ -95,6 +96,7 @@ function App() {
               <Route path="/documents/:docId" element={<DocumentDetailPage />} />
               <Route path="/documents/:docId/chunks" element={<ChunkViewerPage />} />
               <Route path="/documents/:docId/qa" element={<QAViewerPage />} />
+              <Route path="/documents/:docId/review" element={<ReviewQueuePage />} />
               <Route path="/chroma" element={<ChromaImportPage />} />
               <Route path="/search" element={<SearchPage />} />
             </Routes>

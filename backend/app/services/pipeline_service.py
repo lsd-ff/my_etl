@@ -38,11 +38,31 @@ class PipelineService:
             state = self.documents.update_state(doc_id, status="chunking", current_step="chunk", error="")
             loader = get_loader(state["file_path"])
             loaded_segments = loader.load(state["file_path"])
-            cleaned_segments = self._clean_segments(loaded_segments)
+            cleaned_segments, cleaning_reports = self._clean_segments(loaded_segments)
             chunks = self.chunker.chunk_segments(doc_id=doc_id, segments=cleaned_segments)
             self.documents.write_jsonl(self.documents.chunks_path(doc_id), [chunk.to_dict() for chunk in chunks])
             self.documents.write_jsonl(self.documents.qa_records_path(doc_id), [])
             self.documents.write_jsonl(self.documents.failed_chunks_path(doc_id), [])
+            low_quality_chunks = sum(1 for chunk in chunks if chunk.warnings or chunk.quality_score < 0.75)
+            self.documents.write_quality_report(
+                doc_id,
+                {
+                    "doc_id": doc_id,
+                    "filename": state["filename"],
+                    "parse": {
+                        "segments": len(loaded_segments),
+                        "cleaned_segments": len(cleaned_segments),
+                        "file_type": state["file_type"],
+                    },
+                    "cleaning": cleaning_reports,
+                    "chunking": {
+                        "chunks": len(chunks),
+                        "low_quality_chunks": low_quality_chunks,
+                        "avg_quality_score": self._average([chunk.quality_score for chunk in chunks]),
+                        "warning_counts": self._warning_counts([warning for chunk in chunks for warning in chunk.warnings]),
+                    },
+                },
+            )
             self.documents.update_state(
                 doc_id,
                 status="chunked",
@@ -62,6 +82,9 @@ class PipelineService:
                 current_step="chunk",
                 progress_message=f"Created {len(chunks)} chunks",
                 error="",
+                low_quality_chunks=low_quality_chunks,
+                low_quality_qa=0,
+                review_items=low_quality_chunks,
             )
             return {"doc_id": doc_id, "chunks": len(chunks), "status": "chunked"}
 
@@ -98,12 +121,16 @@ class PipelineService:
                     self.documents.append_log(doc_id, f"Skipped processed chunk {chunk.chunk_id}")
                     continue
                 try:
-                    payloads = self._validate_ai_payloads(self.qa_generator.generate_json_for_chunk(chunk))
+                    raw_payloads = self.qa_generator.generate_json_for_chunk(chunk)
+                    payloads = self._validate_ai_payloads(raw_payloads)
+                    if not payloads and raw_payloads:
+                        raise ValueError("No valid QA payloads after schema validation.")
                     payloads = self._dedupe_payloads(payloads, seen_questions)
                     records = [
                         self._qa_record_from_payload(payload, chunk, index, state)
                         for index, payload in enumerate(payloads, start=1)
                     ]
+                    low_quality_records = [record for record in records if record.quality_score < 0.75 or record.validation_warnings]
                     self.documents.append_jsonl(
                         self.documents.qa_records_path(doc_id),
                         [record.to_jsonl_dict() for record in records],
@@ -112,13 +139,17 @@ class PipelineService:
                         seen_questions.add(self._question_key(record.question))
                     processed_hashes.add(chunk.chunk_hash)
                     processed_ids.add(chunk.chunk_id)
-                    self.documents.append_log(doc_id, f"Generated {len(records)} QA records for {chunk.chunk_id}")
+                    self.documents.append_log(
+                        doc_id,
+                        f"Generated {len(records)} QA records for {chunk.chunk_id}; low_quality={len(low_quality_records)}",
+                    )
                 except Exception as exc:
                     failed_rows.append(
                         {
                             **chunk.to_dict(),
                             "error": str(exc),
                             "error_type": type(exc).__name__,
+                            "failure_class": self._classify_failure(exc),
                             "failed_at": self.documents.now(),
                             "attempt_step": "generate_qa",
                         }
@@ -130,6 +161,8 @@ class PipelineService:
                     processed_chunks=len(processed_hashes),
                     failed_chunks=len(failed_rows),
                     qa_records=self.documents.count_jsonl(self.documents.qa_records_path(doc_id)),
+                    low_quality_qa=self._low_quality_qa_count(doc_id),
+                    review_items=self.documents.review_queue(doc_id)["total"],
                     processed_chunk_hashes=sorted(processed_hashes),
                     processed_chunk_ids=sorted(processed_ids),
                     imported_to_chroma=False,
@@ -145,6 +178,8 @@ class PipelineService:
                 processed_chunks=len(processed_hashes),
                 failed_chunks=len(failed_rows),
                 qa_records=self.documents.count_jsonl(self.documents.qa_records_path(doc_id)),
+                low_quality_qa=self._low_quality_qa_count(doc_id),
+                review_items=self.documents.review_queue(doc_id)["total"],
                 current_step="generate_qa",
                 current_chunk_id="",
                 current_chunk_index=0,
@@ -225,10 +260,21 @@ class PipelineService:
     def compact_qa_records(self, doc_id: str) -> dict[str, Any]:
         return self.documents.compact_qa_records(doc_id)
 
-    def _clean_segments(self, segments: list[LoadedSegment]) -> list[LoadedSegment]:
+    def _clean_segments(self, segments: list[LoadedSegment]) -> tuple[list[LoadedSegment], list[dict[str, Any]]]:
         cleaned: list[LoadedSegment] = []
-        for segment in segments:
-            text = self.cleaner.clean(segment.text)
+        reports: list[dict[str, Any]] = []
+        for index, segment in enumerate(segments, start=1):
+            result = self.cleaner.clean_with_report(segment.text)
+            text = result.text
+            reports.append(
+                {
+                    "segment_index": index,
+                    "page": segment.page,
+                    "section": segment.section,
+                    "block_type": segment.block_type,
+                    **result.report,
+                }
+            )
             if text:
                 cleaned.append(
                     LoadedSegment(
@@ -237,9 +283,15 @@ class PipelineService:
                         file_type=segment.file_type,
                         page=segment.page,
                         section=segment.section,
+                        heading_path=segment.heading_path,
+                        block_type=segment.block_type,
+                        start_offset=segment.start_offset,
+                        end_offset=segment.end_offset,
+                        quality_score=max(0.0, 1.0 - float(result.report.get("removal_ratio") or 0.0)),
+                        warnings=tuple(result.report.get("warnings") or ()),
                     )
                 )
-        return cleaned
+        return cleaned, reports
 
     @staticmethod
     def _validate_ai_payloads(payloads: Any) -> list[dict[str, str]]:
@@ -257,6 +309,10 @@ class PipelineService:
                 item[field] = value.strip()
             else:
                 if "[" not in item["keywords"] and "]" not in item["keywords"]:
+                    for field in ("evidence", "answer_type", "confidence"):
+                        value = payload.get(field)
+                        if value is not None:
+                            item[field] = str(value).strip()
                     valid.append(item)
         return valid[:5]
 
@@ -297,8 +353,12 @@ class PipelineService:
         }
         return compact.strip("？?") in generic_questions
 
-    @staticmethod
-    def _qa_record_from_payload(payload: dict[str, str], chunk: Chunk, qa_index: int, state: dict[str, Any]) -> QARecord:
+    @classmethod
+    def _qa_record_from_payload(cls, payload: dict[str, str], chunk: Chunk, qa_index: int, state: dict[str, Any]) -> QARecord:
+        evidence = cls._evidence_from_payload(payload, chunk)
+        answer_type = cls._answer_type(payload)
+        confidence = cls._confidence(payload)
+        quality_score, warnings = cls._qa_quality(payload, chunk, evidence, confidence)
         return QARecord(
             doc_id=chunk.doc_id,
             chunk_id=chunk.chunk_id,
@@ -315,4 +375,132 @@ class PipelineService:
             file_hash=state["file_hash"],
             chunk_hash=chunk.chunk_hash,
             id_pad_width=settings.id_pad_width,
+            evidence=evidence,
+            answer_type=answer_type,
+            confidence=confidence,
+            quality_score=quality_score,
+            validation_warnings=",".join(warnings),
         )
+
+    @staticmethod
+    def _evidence_from_payload(payload: dict[str, str], chunk: Chunk) -> str:
+        evidence = str(payload.get("evidence") or "").strip()
+        if evidence:
+            return evidence[:500]
+        answer = str(payload.get("answer") or "").strip()
+        answer_sentence = re.split(r"(?<=[。！？!?；;])\s*|(?<=\.)\s+", answer)[0].strip()
+        if answer_sentence and answer_sentence in chunk.content:
+            return answer_sentence[:500]
+        sentences = [sentence.strip() for sentence in re.split(r"(?<=[。！？!?；;])\s*|(?<=\.)\s+", chunk.content) if sentence.strip()]
+        return (sentences[0] if sentences else chunk.content[:240])[:500]
+
+    @staticmethod
+    def _answer_type(payload: dict[str, str]) -> str:
+        answer_type = str(payload.get("answer_type") or "").strip()
+        if answer_type:
+            return answer_type[:40]
+        question = payload["question"]
+        if "步骤" in question or "如何" in question or "怎么" in question:
+            return "步骤"
+        if "区别" in question or "对比" in question:
+            return "对比"
+        if "什么是" in question or "定义" in question:
+            return "定义"
+        if "作用" in question or "用于" in question:
+            return "作用"
+        return "事实"
+
+    @staticmethod
+    def _confidence(payload: dict[str, str]) -> float:
+        raw = str(payload.get("confidence") or "").strip()
+        if not raw:
+            return 0.75
+        try:
+            value = float(raw)
+        except ValueError:
+            return 0.75
+        if value > 1:
+            value = value / 100
+        return max(0.0, min(1.0, value))
+
+    @classmethod
+    def _qa_quality(cls, payload: dict[str, str], chunk: Chunk, evidence: str, confidence: float) -> tuple[float, list[str]]:
+        warnings: list[str] = []
+        question = payload["question"]
+        answer = payload["answer"]
+        context = payload["context"]
+        keywords = payload["keywords"]
+        if len(question) < 6:
+            warnings.append("question_too_short")
+        if cls._is_generic_question(question):
+            warnings.append("generic_question")
+        if len(answer) < 12:
+            warnings.append("answer_too_short")
+        if len(context) < 80:
+            warnings.append("context_too_short")
+        if not cls._supported_by_chunk(evidence, chunk.content):
+            warnings.append("evidence_not_found_in_chunk")
+        keyword_items = [item.strip() for item in re.split(r"[,，、]", keywords) if item.strip()]
+        if len(keyword_items) < 3:
+            warnings.append("too_few_keywords")
+        if confidence < 0.5:
+            warnings.append("low_model_confidence")
+        if chunk.quality_score < 0.6:
+            warnings.append("low_quality_source_chunk")
+        score = 1.0 - 0.14 * len(warnings)
+        if confidence:
+            score = min(score, 0.65 + confidence * 0.35)
+        return round(max(0.0, min(1.0, score)), 3), warnings
+
+    @staticmethod
+    def _supported_by_chunk(evidence: str, content: str) -> bool:
+        evidence_key = re.sub(r"\s+", "", evidence)
+        content_key = re.sub(r"\s+", "", content)
+        if not evidence_key:
+            return False
+        if evidence_key in content_key:
+            return True
+        if len(evidence_key) < 20:
+            return False
+        probe = evidence_key[:20]
+        return probe in content_key
+
+    @staticmethod
+    def _classify_failure(exc: Exception) -> str:
+        name = type(exc).__name__.lower()
+        message = str(exc).lower()
+        if "json" in message or "decode" in message:
+            return "invalid_llm_json"
+        if "schema" in message or "payload" in message or "valid" in message:
+            return "invalid_qa_payload"
+        if "timeout" in message or "timed out" in message:
+            return "provider_timeout"
+        if "rate" in message or "429" in message:
+            return "provider_rate_limited"
+        if "api" in message or "http" in message or "url" in name:
+            return "provider_error"
+        return "generation_error"
+
+    def _low_quality_qa_count(self, doc_id: str) -> int:
+        rows = self.documents.read_jsonl(self.documents.qa_records_path(doc_id))
+        total = 0
+        for row in rows:
+            metadata = row.get("metadata") or {}
+            warnings = str(metadata.get("validation_warnings") or "").strip()
+            quality_score = float(metadata.get("quality_score") or 1.0)
+            if warnings or quality_score < 0.75:
+                total += 1
+        return total
+
+    @staticmethod
+    def _average(values: list[float]) -> float:
+        if not values:
+            return 0.0
+        return round(sum(values) / len(values), 3)
+
+    @staticmethod
+    def _warning_counts(warnings: list[str]) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for warning in warnings:
+            counts[warning] = counts.get(warning, 0) + 1
+        return counts

@@ -37,6 +37,15 @@ def test_cleaner_removes_duplicate_and_noise_lines() -> None:
     assert "\n\n\n" not in cleaned
 
 
+def test_cleaner_returns_auditable_report() -> None:
+    result = TextCleaner().clean_with_report("Title\nPage 1\nRepeated\nRepeated\nBody")
+
+    assert result.report["removed_line_count"] >= 2
+    assert result.report["noise_line_count"] >= 1
+    assert result.report["duplicate_line_count"] >= 1
+    assert result.report["cleaned_chars"] == len(result.text)
+
+
 def test_chunker_generates_stable_chunk_fields() -> None:
     content = "# Heading\n" + "This paragraph exists to test stable chunk splitting. " * 80
     chunker = RecursiveChunker(chunk_size=120, chunk_overlap=20)
@@ -59,6 +68,35 @@ def test_chunker_generates_stable_chunk_fields() -> None:
     assert chunks[0].chunk_id == "doc001_chunk1"
     assert chunks[0].chunk_index == 1
     assert len(chunks[0].chunk_hash) == 64
+    assert chunks[0].token_count > 0
+    assert 0 <= chunks[0].quality_score <= 1
+    assert isinstance(chunks[0].warnings, tuple)
+
+
+def test_chunker_preserves_heading_path_and_block_type() -> None:
+    chunker = RecursiveChunker(chunk_size=200, chunk_overlap=20)
+    chunks = chunker.chunk_segments(
+        "doc001",
+        [
+            type(
+                "Segment",
+                (),
+                {
+                    "text": "# Heading\nA useful paragraph with enough detail to become a valid chunk.",
+                    "page": 0,
+                    "section": "Heading",
+                    "heading_path": ("Heading",),
+                    "block_type": "markdown",
+                    "start_offset": 0,
+                    "end_offset": 72,
+                },
+            )()
+        ],
+    )
+
+    assert chunks[0].heading_path == ("Heading",)
+    assert "heading" in chunks[0].block_types or "markdown" in chunks[0].block_types
+
 
 
 def test_qa_record_uses_question_as_document_and_rich_embedding_text() -> None:
@@ -153,6 +191,8 @@ def test_qa_metadata_contains_chroma_simple_fields() -> None:
         "chunk_hash",
     }
     assert all(not isinstance(value, list) for value in record.metadata.values())
+    assert "quality_score" in record.metadata
+    assert "validation_warnings" in record.metadata
 
 
 def test_qa_jsonl_dict_keeps_metadata_fields_deduplicated() -> None:

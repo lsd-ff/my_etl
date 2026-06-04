@@ -18,6 +18,7 @@ export type Paged<T> = {
 };
 
 const API_BASE = '/api';
+const SEARCH_API_BASE = (import.meta as any).env?.VITE_SEARCH_API_BASE || API_BASE;
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(url, options);
@@ -78,6 +79,11 @@ export const api = {
   failedChunks(docId: string) {
     return request<Paged<any>>(`${API_BASE}/files/${docId}/failed-chunks?page=1&page_size=200`);
   },
+  reviewQueue(docId: string, page: number, pageSize: number) {
+    return request<Paged<any> & { summary: Record<string, number> }>(
+      `${API_BASE}/files/${docId}/review-queue?page=${page}&page_size=${pageSize}`
+    );
+  },
   batch(docIds: string[], steps: string[]) {
     return request<Record<string, any>>(`${API_BASE}/batch/process`, {
       method: 'POST',
@@ -86,7 +92,7 @@ export const api = {
     });
   },
   search(query: string, topK: number) {
-    return request<any[]>(`${API_BASE}/search`, {
+    return request<any[]>(`${SEARCH_API_BASE}/search`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query, top_k: topK })

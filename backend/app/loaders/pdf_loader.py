@@ -20,17 +20,24 @@ class PDFLoader(BaseLoader):
 
         reader = PdfReader(str(path))
         segments: list[LoadedSegment] = []
+        offset = 0
         for index, page in enumerate(reader.pages, start=1):
             text = page.extract_text() or ""
-            if text.strip():
+            stripped = text.strip()
+            if stripped:
+                start = offset
+                end = start + len(stripped)
                 segments.append(
                     LoadedSegment(
-                        text=text,
+                        text=stripped,
                         source=str(path),
                         file_type="pdf",
                         page=index,
                         section="",
+                        block_type="page",
+                        start_offset=start,
+                        end_offset=end,
                     )
                 )
+                offset = end + 1
         return segments
-
