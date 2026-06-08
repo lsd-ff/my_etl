@@ -1,0 +1,22 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    container_name: my-etl-backend
+    env_file:
+      - ./backend/.env
+    volumes:
+      - ./backend/data:/app/data
+    expose:
+      - "8000"
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./frontend
+    container_name: my-etl-web
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
